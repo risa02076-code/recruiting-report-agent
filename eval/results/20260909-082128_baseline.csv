@@ -1,0 +1,7 @@
+﻿case_id,period,expects_anomaly,run_id,status,completed,correct,query_round_count,duration_s,input_tokens,output_tokens,estimated_cost,hallucination_suspects,note
+anomaly_offer_signed_drop,2026-03,True,9cecb767-0c06-411c-9845-888d752a0fb9,completed,True,False,1,15.7,25320,353,0.004,,골든 키워드 누락: ['offer_signed']
+anomaly_channel_direct_sourcing_spike,2025-11,True,9969f072-dd5e-46d7-bb4c-388d669031d1,completed,True,False,5,22.2,46178,1189,0.0076,,골든 키워드 누락: ['Direct Sourcing']
+normal_2025_05,2025-05,False,1409eb33-db53-4196-81a3-1e50a66c56aa,completed,True,True,3,13.3,29190,780,0.0048,,
+normal_2025_07,2025-07,False,56d7ac39-83d1-4c9f-8f96-3b3a8037ef56,completed,True,True,2,11.6,26638,808,0.0045,,
+normal_2025_09,2025-09,False,857e2112-6145-42d2-a759-8019ec051b4f,completed,True,True,3,17.5,70587,990,0.0112,,
+normal_2026_01,2026-01,False,6cbb9af8-16eb-4567-89f7-3c4470c827f9,completed,True,True,2,12.3,32723,817,0.0054,,

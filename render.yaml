@@ -1,0 +1,12 @@
+# Render.com Blueprint — https://render.com/docs/blueprint-spec
+# Render 대시보드에서 "New +" -> "Blueprint" -> 이 저장소 선택하면 이 파일대로 자동 구성된다.
+services:
+  - type: web
+    name: recruiting-report-agent
+    env: docker
+    plan: free
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false   # 대시보드에서 직접 입력 (이 파일/저장소에는 절대 넣지 않음)
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini

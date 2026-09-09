@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}실행 {{ run.run_id[:8] }} — 채용 리포트 에이전트{% endblock %}
+{% block refresh %}
+{% if run.status == "running" %}<meta http-equiv="refresh" content="2">{% endif %}
+{% endblock %}
+{% block content %}
+<h1>실행 상세 — {{ run.period }}</h1>
+<p>
+  상태: <span class="badge badge-{{ run.status }}">{{ run.status }}</span>
+  {% if run.status == "running" %}<span class="muted">(2초마다 자동 새로고침)</span>{% endif %}
+  &nbsp;|&nbsp; 재조회 {{ run.query_round_count }}회
+  &nbsp;|&nbsp; 토큰 입력 {{ run.total_input_tokens }} / 출력 {{ run.total_output_tokens }}
+  &nbsp;|&nbsp; 추정 비용 ${{ "%.4f"|format(estimated_cost) }}
+</p>
+
+{% if draft %}
+<div class="card">
+  <h2 style="margin-top:0">인사이트
+    <span class="badge badge-{{ draft.status }}">{{ draft.status }}</span>
+  </h2>
+  <p><b>요약</b><br>{{ draft.summary_text }}</p>
+  <p><b>원인 분석</b><br>{{ draft.root_cause_text }}</p>
+  <p><b>다음 조치 제안</b><br>{{ draft.next_action_text }}</p>
+  <p class="muted">생성: {{ draft.generated_at[:19] }}{% if draft.approved_at %} · 승인: {{ draft.approved_at }}{% endif %}</p>
+
+  <p><a href="/metrics">핵심지표 화면에서 숫자 보기 →</a></p>
+
+  {% if draft.status == "draft" %}
+  <form method="post" action="/runs/{{ run.run_id }}/approve">
+    <button type="submit">승인하기</button>
+  </form>
+  <p class="muted">승인 전까지는 리크루터 본인만 볼 수 있는 초안 상태입니다.</p>
+  {% endif %}
+</div>
+{% elif run.status == "completed" %}
+<div class="card"><p class="muted">에이전트가 draft를 남기지 않고 종료됐습니다 — 실행 로그를 확인하세요.</p></div>
+{% endif %}
+
+<h2>실행 로그</h2>
+{% for e in events %}
+<div class="event event-{{ e.event_type }}">
+  <b>#{{ e.step_no }} {{ e.event_type }}</b>
+  {% if e.tool_name %}— <code>{{ e.tool_name }}</code>{% if e.latency_ms is not none %} ({{ e.latency_ms }}ms){% endif %}{% endif %}
+  <span class="muted">{{ e.created_at[11:19] }}</span>
+  {% if e.reasoning_text %}<pre>{{ e.reasoning_text }}</pre>{% endif %}
+  {% if e.tool_input_json %}<pre>입력: {{ e.tool_input_json }}</pre>{% endif %}
+  {% if e.tool_output_json %}<pre>결과: {{ e.tool_output_json }}</pre>{% endif %}
+</div>
+{% else %}
+<p class="muted">아직 로그가 없습니다.</p>
+{% endfor %}
+{% endblock %}

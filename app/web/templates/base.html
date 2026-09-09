@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}채용 리포트 에이전트{% endblock %}</title>
+{% block refresh %}{% endblock %}
+<style>
+  body { font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; max-width: 920px;
+         margin: 32px auto; padding: 0 16px; color: #1a1a1a; background: #fafafa; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 17px; margin-top: 28px; }
+  nav { margin-bottom: 24px; }
+  nav a { margin-right: 16px; color: #2563eb; text-decoration: none; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e5e5e5; }
+  th { color: #666; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .badge-running { background: #fef3c7; color: #92400e; }
+  .badge-completed { background: #d1fae5; color: #065f46; }
+  .badge-failed { background: #fee2e2; color: #991b1b; }
+  .badge-timeout { background: #fee2e2; color: #991b1b; }
+  .badge-draft { background: #e0e7ff; color: #3730a3; }
+  .badge-approved { background: #d1fae5; color: #065f46; }
+  form.inline { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin: 16px 0; }
+  form.inline label { display: flex; flex-direction: column; font-size: 12px; color: #555; gap: 4px; }
+  input, select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+  button { padding: 8px 16px; border: none; border-radius: 6px; background: #2563eb; color: #fff;
+           font-size: 14px; cursor: pointer; }
+  button.secondary { background: #6b7280; }
+  button:hover { opacity: 0.9; }
+  .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; padding: 16px 20px; margin: 14px 0; }
+  .event { border-left: 3px solid #d1d5db; padding: 8px 12px; margin: 6px 0; font-size: 13px; }
+  .event-tool_call { border-color: #2563eb; background: #eff6ff; }
+  .event-agent_text { border-color: #059669; background: #ecfdf5; }
+  .event-error { border-color: #dc2626; background: #fef2f2; }
+  .event pre { white-space: pre-wrap; word-break: break-all; margin: 4px 0 0; font-size: 12px; color: #333; }
+  .muted { color: #888; font-size: 13px; }
+  code { background: #f1f1f1; padding: 1px 5px; border-radius: 4px; }
+  .table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/">대시보드</a>
+  <a href="/metrics">핵심지표</a>
+  <a href="/history">실행 이력</a>
+</nav>
+{% block content %}{% endblock %}
+</body>
+</html>

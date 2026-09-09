@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}실행 이력 — 채용 리포트 에이전트{% endblock %}
+{% block content %}
+<h1>실행 이력 &amp; 비용</h1>
+{% if runs %}
+<table>
+  <tr>
+    <th>기간</th><th>상태</th><th>재조회</th><th>소요시간</th>
+    <th>입력토큰</th><th>출력토큰</th><th>추정비용</th><th></th>
+  </tr>
+  {% for r in runs %}
+  <tr>
+    <td>{{ r.period }}</td>
+    <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+    <td>{{ r.query_round_count }}</td>
+    <td>{{ r.duration_s if r.duration_s is not none else "-" }}s</td>
+    <td>{{ r.total_input_tokens }}</td>
+    <td>{{ r.total_output_tokens }}</td>
+    <td>${{ "%.4f"|format(r.estimated_cost) }}</td>
+    <td><a href="/runs/{{ r.run_id }}">보기 →</a></td>
+  </tr>
+  {% endfor %}
+</table>
+<p class="muted">
+  합계: 실행 {{ runs|length }}회 · 입력 {{ total_input }}토큰 · 출력 {{ total_output }}토큰
+  · 추정 비용 ${{ "%.4f"|format(total_cost) }}
+</p>
+{% else %}
+<p class="muted">아직 실행 이력이 없습니다.</p>
+{% endif %}
+{% endblock %}

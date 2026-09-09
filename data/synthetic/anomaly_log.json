@@ -1,0 +1,14 @@
+[
+  {
+    "period": "2026-03",
+    "metric": "offer_sent -> offer_signed 전환율",
+    "expected_direction": "급락",
+    "reason": "합성 데이터에 의도적으로 주입한 오퍼 수락률 급락 (평가셋 골든 정답용)"
+  },
+  {
+    "period": "2025-11",
+    "metric": "channel_stats scope=hired_only 중 Direct Sourcing 비중",
+    "expected_direction": "급등",
+    "reason": "전체 지원자 채널 분포는 그대로인데 합격자만 놓고 보면 Direct Sourcing 비중이 급등 (지원경로 vs 합격자 지원경로 격차 탐지 시나리오, PRD 9.1 참고)"
+  }
+]

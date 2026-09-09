@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/recruiting.db
+data/app_state.db
+data/sheet_local/

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}핵심지표 — 채용 리포트 에이전트{% endblock %}
+{% block content %}
+<style>
+  .heat-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  .heat-table th, .heat-table td { padding: 4px 8px; text-align: right; border-bottom: 1px solid #eee; }
+  .heat-table th.item-col, .heat-table td.item-col { text-align: left; position: sticky; left: 0;
+    background: #fff; font-weight: 600; border-right: 1px solid #ddd; }
+  .heat-table th.period-head { color: #888; font-weight: 500; }
+  .heat-cell { color: #1a1a1a; }
+</style>
+
+<h1>핵심지표</h1>
+<p class="muted">
+  전부 고정 집계값이라 에이전트가 아니라 DB 조회만으로 매번 다시 계산해서 보여준다(판단 없음).
+  최근 24개월 데이터, 기간을 가로로 나열하고 값이 클수록 진하게 칠했다 — 한 줄만 훑어도 추세가 보인다.
+</p>
+
+{% macro heat_table(periods, table) %}
+<div class="card table-wrap">
+  <table class="heat-table">
+    <tr><th class="item-col">항목</th>
+      {% for p in periods %}<th class="period-head">{{ p }}</th>{% endfor %}
+    </tr>
+    {% for row in table %}
+    <tr>
+      <td class="item-col">{{ row.item }}</td>
+      {% for c in row.cells %}
+        <td class="heat-cell" style="background: rgba(37,99,235,{{ c.intensity * 0.55 }})">
+          {{ c.value if c.value is not none else "-" }}
+        </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endmacro %}
+
+<h2>월별 핵심지표</h2>
+{{ heat_table(kpi_periods, kpi_table) }}
+
+<h2>퍼널 (단계별 인원)</h2>
+{{ heat_table(funnel_periods, funnel_table) }}
+
+<h2>부서별 지원자</h2>
+{{ heat_table(dept_periods, dept_table) }}
+
+<h2>지원경로 — 전체 지원자</h2>
+{{ heat_table(channel_all_periods, channel_all_table) }}
+
+<h2>지원경로 — 합격자만</h2>
+<p class="muted">위 "전체 지원자" 표와 같은 기간을 나란히 비교하면, 특정 채널만 합격자 비중이 튀는 시기가 눈에 띈다.</p>
+{{ heat_table(channel_hired_periods, channel_hired_table) }}
+
+<h2>진행중비율</h2>
+{{ heat_table(progress_periods, progress_table) }}
+
+<h2>연간누적지표</h2>
+<div class="card table-wrap">
+  <table>
+    <tr><th>연도</th><th>부서범위</th><th>입사인원</th><th>채용인원</th><th>평균입사소요일</th><th>평균채용소요일</th></tr>
+    {% for r in ytd_rows %}
+    <tr>
+      <td>{{ r.year }}</td><td>{{ r.department_scope }}</td><td>{{ r.joined_count }}</td>
+      <td>{{ r.hired_count }}</td><td>{{ r.avg_date_to_join }}</td><td>{{ r.avg_date_to_hire }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
