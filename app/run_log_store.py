@@ -18,6 +18,13 @@ def _connect():
     conn.row_factory = sqlite3.Row
     schema_sql = (Path(__file__).parent / "app_db_schema.sql").read_text(encoding="utf-8")
     conn.executescript(schema_sql)
+    try:
+        # CREATE TABLE IF NOT EXISTS는 이미 있는 테이블에 새 컬럼을 추가해주지 않으므로,
+        # messages_json(재개 기능, 나중에 추가됨)이 없는 기존 DB를 위한 가벼운 마이그레이션.
+        conn.execute("ALTER TABLE runs ADD COLUMN messages_json TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # 이미 컬럼이 있음
     return conn
 
 
@@ -84,6 +91,28 @@ def finish_run(run_id: str, status: str) -> None:
             (status, _now(), run_id),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def save_messages(run_id: str, messages: list) -> None:
+    """재개(resume)용 대화 상태 스냅샷 저장. 매 턴마다 덮어쓴다."""
+    conn = _connect()
+    try:
+        conn.execute("UPDATE runs SET messages_json = ? WHERE run_id = ?",
+                     (json.dumps(messages, ensure_ascii=False), run_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_messages(run_id: str) -> list | None:
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT messages_json FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        if row is None or row["messages_json"] is None:
+            return None
+        return json.loads(row["messages_json"])
     finally:
         conn.close()
 

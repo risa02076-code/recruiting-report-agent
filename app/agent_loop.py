@@ -24,6 +24,7 @@ from app.config import OPENAI_MODEL, MAX_REQUERY_ROUNDS, RUN_TIME_LIMIT_SECONDS
 from app.tools.query_recruiting_db import query_recruiting_db, QueryError
 from app.tools.run_chart_code import run_chart_code, ChartCodeError
 from app.tools.write_insight_draft import write_insight_draft
+from app.insight_store import get_draft
 from app.sheets_writer import SheetWriteError
 import app.run_log_store as run_log_store
 
@@ -58,6 +59,22 @@ SYSTEM_PROMPT = """\
 
 숫자를 추측하지 마세요 — 모든 수치는 반드시 도구 호출 결과에서만 가져오세요.
 """
+
+# 평가(eval/run_eval.py --prompt-variant)에서 baseline과 비교하는 프롬프트 변형.
+# 2025-11(채널 이상치) 케이스를 baseline이 두 번 다 놓친 원인 — 퍼널 시계열만 보고
+# 끝내버리는 습관 — 을 겨냥해서, 결론 내리기 전 다른 축을 최소 1번 보라고 못박았다.
+SYSTEM_PROMPT_CHECK_AXIS = SYSTEM_PROMPT.replace(
+    '4. 이상치가 없다면 그 사실 자체를 인사이트로 남기세요("이번 기간은 특이사항 없음").',
+    '4. **"특이사항 없음"이라고 결론 내리기 전에, 반드시 퍼널 시계열 말고 다른 축(department 또는 '
+    'channel, 특히 channel은 scope="hired_only"로) 중 최소 하나는 한 번 더 조회해서 거기서도 '
+    '이상치가 없는지 확인하세요.** 퍼널만 보고 바로 "특이사항 없음"이라고 결론짓지 마세요. 다른 축까지 '
+    "확인했는데도 이상치가 없다면 그 사실을 인사이트로 남기세요.",
+)
+
+PROMPT_VARIANTS = {
+    "baseline": SYSTEM_PROMPT,
+    "check_axis": SYSTEM_PROMPT_CHECK_AXIS,
+}
 
 TOOL_SPECS = [
     {
@@ -166,35 +183,19 @@ def _dispatch_tool(name: str, tool_input: dict, run_id: str, query_round_count: 
     raise RunAborted(f"알 수 없는 도구입니다: {name}")
 
 
-def run_agent(period_start: str, period_end: str, filters: dict | None = None,
-              run_id: str | None = None) -> dict:
-    """에이전트 루프 실행. period_start/period_end는 YYYY-MM. 완료 후 run 요약 dict를 반환한다.
+def _run_loop(run_id: str, messages: list, query_round_count: int, step_no: int,
+              wrote_draft: bool, nudge_count: int, start_time: float,
+              max_iterations: int | None = None) -> dict:
+    """실제 루프 본체. run_agent()(새로 시작)와 resume_run()(이어서 시작) 둘 다 이 함수를
+    호출한다 — 시작 방식만 다르고 진행 로직은 완전히 같아야 재개가 의미 있기 때문이다.
 
-    run_id를 미리 만들어 넘길 수 있게 한 이유: 웹앱이 백그라운드 스레드로 이 함수를 실행하기
-    전에 run_id를 먼저 알아야 바로 /runs/{run_id} 화면으로 이동시켜 진행 상황을 보여줄 수 있다."""
-    run_id = run_id or str(uuid.uuid4())
-    filters = filters or {}
-    period_label = period_start if period_start == period_end else f"{period_start}~{period_end}"
-
-    run_log_store.start_run(run_id, period_label, filters)
+    max_iterations는 테스트 전용이다: 지정한 횟수만큼만 API를 호출하고, 아직 안 끝났으면
+    status를 확정 짓지 않고(= 'running'으로 남겨) 그대로 반환한다 — 실제로 프로세스가 죽었을
+    때와 똑같은 상태를 만들어서 resume_run()이 이어받을 수 있는지 테스트하기 위함이다."""
     client = OpenAI()
-
-    user_prompt = (
-        f"기간: {period_start} ~ {period_end}\n"
-        f"필터: {json.dumps(filters, ensure_ascii=False) if filters else '없음'}\n"
-        "이 기간의 채용 현황을 조사하고, 이상치가 있다면 원인을 분석해 인사이트를 작성하세요."
-    )
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    query_round_count = [0]
-    step_no = 0
-    wrote_draft = False
-    nudge_count = 0
-    start_time = time.monotonic()
+    round_box = [query_round_count]  # _dispatch_tool과 공유하려고 리스트로 감쌈(참조 전달)
     status = "completed"
+    iterations = 0
 
     try:
         while True:
@@ -203,6 +204,11 @@ def run_agent(period_start: str, period_end: str, filters: dict | None = None,
                 run_log_store.log_event(run_id, step_no, "error",
                                          reasoning_text=f"시간 제한({RUN_TIME_LIMIT_SECONDS}초) 초과로 중단")
                 break
+            if max_iterations is not None and iterations >= max_iterations:
+                run_log_store.save_messages(run_id, messages)
+                return {"run_id": run_id, "status": "running", "wrote_draft": wrote_draft,
+                        "note": f"테스트용 중단(max_iterations={max_iterations}) — 재개 가능한 상태로 남음"}
+            iterations += 1
 
             response = client.chat.completions.create(
                 model=OPENAI_MODEL, messages=messages, tools=TOOL_SPECS, tool_choice="auto",
@@ -234,6 +240,7 @@ def run_agent(period_start: str, period_end: str, filters: dict | None = None,
                         "지금 바로 호출해 결론을 기록하세요."
                     ),
                 })
+                run_log_store.save_messages(run_id, messages)
                 continue
 
             messages.append({
@@ -251,7 +258,7 @@ def run_agent(period_start: str, period_end: str, filters: dict | None = None,
                 t0 = time.monotonic()
                 try:
                     tool_input = json.loads(tool_call.function.arguments)
-                    result = _dispatch_tool(tool_call.function.name, tool_input, run_id, query_round_count)
+                    result = _dispatch_tool(tool_call.function.name, tool_input, run_id, round_box)
                 except (QueryError, ChartCodeError, SheetWriteError, RunAborted,
                         TypeError, json.JSONDecodeError) as e:
                     result = {"error": str(e)}
@@ -271,6 +278,8 @@ def run_agent(period_start: str, period_end: str, filters: dict | None = None,
                     "content": json.dumps(result, ensure_ascii=False),
                 })
 
+            run_log_store.save_messages(run_id, messages)  # 턴 하나 끝날 때마다 재개용 스냅샷 갱신
+
         if status == "completed" and not wrote_draft:
             status = "failed"
             run_log_store.log_event(run_id, step_no + 1, "error",
@@ -281,6 +290,65 @@ def run_agent(period_start: str, period_end: str, filters: dict | None = None,
 
     run_log_store.finish_run(run_id, status)
     return {"run_id": run_id, "status": status, "wrote_draft": wrote_draft}
+
+
+def run_agent(period_start: str, period_end: str, filters: dict | None = None,
+              run_id: str | None = None, system_prompt: str | None = None,
+              max_iterations: int | None = None) -> dict:
+    """에이전트 루프를 처음부터 실행. period_start/period_end는 YYYY-MM.
+
+    run_id를 미리 만들어 넘길 수 있게 한 이유: 웹앱이 백그라운드 스레드로 이 함수를 실행하기
+    전에 run_id를 먼저 알아야 바로 /runs/{run_id} 화면으로 이동시켜 진행 상황을 보여줄 수 있다.
+    system_prompt를 넘기면 기본 SYSTEM_PROMPT 대신 그걸 쓴다 — 평가 세트에서 프롬프트를
+    바꿔가며 성능을 비교할 때 씀(eval/run_eval.py --prompt-variant, PRD 10.2)."""
+    run_id = run_id or str(uuid.uuid4())
+    filters = filters or {}
+    period_label = period_start if period_start == period_end else f"{period_start}~{period_end}"
+    prompt = system_prompt or SYSTEM_PROMPT
+
+    run_log_store.start_run(run_id, period_label, filters)
+
+    user_prompt = (
+        f"기간: {period_start} ~ {period_end}\n"
+        f"필터: {json.dumps(filters, ensure_ascii=False) if filters else '없음'}\n"
+        "이 기간의 채용 현황을 조사하고, 이상치가 있다면 원인을 분석해 인사이트를 작성하세요."
+    )
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    run_log_store.save_messages(run_id, messages)
+
+    return _run_loop(run_id, messages, query_round_count=0, step_no=0, wrote_draft=False,
+                      nudge_count=0, start_time=time.monotonic(), max_iterations=max_iterations)
+
+
+def resume_run(run_id: str, max_iterations: int | None = None) -> dict:
+    """중단된(status='running') run을 저장된 대화 상태에서 이어서 실행한다 (PRD 4.4).
+
+    query_round_count는 runs.query_round_count(도구 호출마다 이미 자동 증가되던 값)를,
+    wrote_draft는 insight_drafts에 해당 run_id의 draft가 이미 있는지를 보고 재구성한다.
+    nudge_count는 별도로 저장해두지 않아 0부터 다시 세는데, 최악의 경우에도 "저장하라"고
+    최대 2번 더 요구하는 정도라 크게 문제되지 않는다(간소화 지점, README에 명시).
+    시간 제한은 재개 시점부터 새로 3분을 준다 — 크래시로 멈춰있던 시간까지 실행 시간에
+    포함시키는 건 의미가 없다고 판단."""
+    run = run_log_store.get_run(run_id)
+    if run is None:
+        raise ValueError(f"run_id를 찾을 수 없습니다: {run_id}")
+    if run["status"] != "running":
+        raise ValueError(f"이 run은 이미 '{run['status']}' 상태라 재개할 수 없습니다(진행 중인 것만 재개 가능).")
+
+    messages = run_log_store.load_messages(run_id)
+    if not messages:
+        raise ValueError("저장된 대화 상태가 없어 재개할 수 없습니다 — 처음부터 다시 실행하세요.")
+
+    events = run_log_store.get_events(run_id)
+    step_no = max((e["step_no"] for e in events), default=0)
+    wrote_draft = get_draft(run_id) is not None
+
+    return _run_loop(run_id, messages, query_round_count=run["query_round_count"], step_no=step_no,
+                      wrote_draft=wrote_draft, nudge_count=0, start_time=time.monotonic(),
+                      max_iterations=max_iterations)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS runs (
     finished_at  TEXT,
     query_round_count INTEGER NOT NULL DEFAULT 0,
     total_input_tokens  INTEGER NOT NULL DEFAULT 0,
-    total_output_tokens INTEGER NOT NULL DEFAULT 0
+    total_output_tokens INTEGER NOT NULL DEFAULT 0,
+    messages_json TEXT  -- 재개(resume)용 OpenAI 대화 상태 스냅샷. 매 턴마다 갱신됨(4.4 참고)
 );
 
 -- run 안의 개별 도구 호출 trace (실행 로그 화면이 그대로 읽어서 보여줄 데이터).

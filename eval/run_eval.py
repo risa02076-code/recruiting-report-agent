@@ -9,9 +9,14 @@ eval/cases.py의 각 케이스에 대해 에이전트를 실행(또는 이미 �
 기본값(옵션 없음)은 같은 기간의 완료된 run이 이미 있으면 재사용한다.
 
 사용법:
-    python -m eval.run_eval                    # 기존 run 재사용, 없는 것만 새로 실행
-    python -m eval.run_eval --fresh             # 전부 새로 실행
-    python -m eval.run_eval --label baseline    # 결과 CSV 파일명에 라벨 붙이기(설정 비교용)
+    python -m eval.run_eval                              # baseline, 기존 run 재사용
+    python -m eval.run_eval --fresh                       # baseline, 전부 새로 실행
+    python -m eval.run_eval --prompt-variant check_axis    # 다른 프롬프트로 비교 실행(항상 새로 호출)
+
+설정 비교(PRD 10장 "비교표"): --prompt-variant로 app/agent_loop.py의 PROMPT_VARIANTS 중 하나를
+골라 같은 골든 케이스에 대해 실행하면, eval/results/의 CSV 두 개(baseline vs 변형)를 나란히
+놓고 정확도·비용·재조회횟수 변화를 비교할 수 있다. baseline이 아닌 변형은 캐시를 신뢰할 수
+없으므로(다른 설정이라 다른 결과가 나와야 정상) 항상 새로 실행한다.
 """
 import argparse
 import csv
@@ -19,7 +24,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.agent_loop import run_agent
+from app.agent_loop import run_agent, PROMPT_VARIANTS
 from app.config import OPENAI_INPUT_COST_PER_1M, OPENAI_OUTPUT_COST_PER_1M, OPENAI_MODEL
 from app.insight_store import get_draft
 import app.run_log_store as run_log_store
@@ -96,15 +101,20 @@ def grade_case(case: dict, run: dict | None, draft: dict | None) -> dict:
     return result
 
 
-def run_all(fresh: bool) -> list:
+def run_all(fresh: bool, variant: str) -> list:
+    # baseline이 아닌 변형은 이전 캐시(다른 프롬프트로 만들어진 결과)를 재사용하면 비교가
+    # 무의미해지므로 항상 새로 실행한다. baseline만 비용 절약을 위해 재사용을 허용.
+    reuse_allowed = (not fresh) and variant == "baseline"
+    system_prompt = PROMPT_VARIANTS[variant]
+
     results = []
     for case in EVAL_CASES:
-        run = None if fresh else find_existing_run(case["period_start"], case["period_end"])
+        run = find_existing_run(case["period_start"], case["period_end"]) if reuse_allowed else None
         if run:
             print(f"[{case['case_id']}] 기존 run 재사용 (run_id={run['run_id'][:8]}) — 추가 비용 없음")
         else:
-            print(f"[{case['case_id']}] 에이전트 새로 실행 중... ({case['period_start']})")
-            summary = run_agent(case["period_start"], case["period_end"])
+            print(f"[{case['case_id']}] 에이전트 새로 실행 중... ({case['period_start']}, variant={variant})")
+            summary = run_agent(case["period_start"], case["period_end"], system_prompt=system_prompt)
             run = run_log_store.get_run(summary["run_id"])
         draft = get_draft(run["run_id"]) if run else None
         results.append(grade_case(case, run, draft))
@@ -157,12 +167,15 @@ def write_csv(results: list, label: str) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--fresh", action="store_true", help="기존 run을 무시하고 전부 새로 실행(과금 발생)")
-    parser.add_argument("--label", default="baseline", help="결과 파일명에 붙일 설정 라벨(모델/프롬프트 비교용)")
+    parser.add_argument("--prompt-variant", default="baseline", choices=list(PROMPT_VARIANTS),
+                         help="app/agent_loop.py의 PROMPT_VARIANTS 중 어떤 프롬프트로 실행할지")
+    parser.add_argument("--label", default=None, help="결과 파일명에 붙일 라벨(기본값: prompt-variant 이름)")
     args = parser.parse_args()
 
-    all_results = run_all(fresh=args.fresh)
+    label = args.label or args.prompt_variant
+    all_results = run_all(fresh=args.fresh, variant=args.prompt_variant)
     print()
     print_table(all_results)
     print_summary(all_results)
-    csv_path = write_csv(all_results, args.label)
+    csv_path = write_csv(all_results, label)
     print(f"\n결과 저장: {csv_path}")
